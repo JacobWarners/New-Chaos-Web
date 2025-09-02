@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, memo } from 'react';
+import { useEffect, useRef, memo } from 'react';
 import PropTypes from 'prop-types';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';

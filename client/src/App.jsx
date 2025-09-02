@@ -24,8 +24,8 @@ function App() {
     <div className="app-container">
       <h1>Chaos Lab</h1>
       <p>Click the button below to test the pop-out window.</p>
-      
-      <button 
+
+      <button
         onClick={openTerminalWindow}
         style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer' }}
         // The button is disabled if a terminal is already open.

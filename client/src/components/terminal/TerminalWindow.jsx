@@ -2,9 +2,10 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import PropTypes from 'prop-types';
 
-function TerminalWindow({ children, onClose }) {
+function TerminalWindow({ isOpen, children, onClose }) {
   // Use a ref to hold the container div. This is more stable than state and avoids re-renders.
   const containerRef = useRef(null);
+  const terminalRef = useRef(null)
 
   // Lazily create the container div only once.
   if (!containerRef.current) {
@@ -12,13 +13,19 @@ function TerminalWindow({ children, onClose }) {
   }
 
   useEffect(() => {
+    if (terminalRef.current || !isOpen) {
+      return
+    }
+
     // This effect runs only once when the component mounts.
     const newWindow = window.open('', '', 'width=1200,height=800,left=200,top=200');
-    
+    terminalRef.current = newWindow
+    console.log(newWindow)
     // Attach our persistent container div to the new window.
+    console.log(containerRef.current)
     newWindow.document.body.appendChild(containerRef.current);
     newWindow.document.title = "Chaos Lab Terminal";
-    
+
     // Add event listener for when the user manually closes the pop-up.
     newWindow.addEventListener('beforeunload', onClose);
 
@@ -48,11 +55,25 @@ function TerminalWindow({ children, onClose }) {
     };
   }, [onClose]);
 
+  useEffect(
+    () => {
+      if (!isOpen) {
+        terminalRef.current = null
+      }
+    },
+    [isOpen]
+  )
+
+  if (!isOpen) {
+    return null
+  }
+
   // Use the portal to render the children into our persistent container div.
   return createPortal(children, containerRef.current);
 }
 
 TerminalWindow.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
   children: PropTypes.node.isRequired,
   onClose: PropTypes.func.isRequired,
 };
