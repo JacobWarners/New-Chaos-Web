@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react'
 import { createFileRoute } from "@tanstack/react-router"
 
-import TerminalWindow from '../components/TerminalWindow'
-import TerminalView from '../components/TerminalView'
+import TerminalWindow from '../components/terminal/TerminalWindow'
+import TerminalView from '../components/terminal/TerminalView'
 
 export const Route = createFileRoute('/$scenario')({
   component: ScenarioRoute

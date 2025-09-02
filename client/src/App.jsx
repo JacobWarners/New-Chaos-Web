@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import TerminalWindow from './components/TerminalWindow';
-import TerminalView from './components/TerminalView';
+import TerminalWindow from './components/terminal/TerminalWindow';
+import TerminalView from './components/terminal/TerminalView';
 import './App.css';
 
 function App() {
