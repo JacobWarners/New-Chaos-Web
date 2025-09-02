@@ -1,20 +1,8 @@
-import * as React from 'react'
-// import PropTypes from 'prop-types'
+import React from 'react';
+import logo from '../assets/weka.svg';
+import styles from './Header.module.css';
 
-import logo from '../assets/weka.svg'
-
-import styles from './Header.module.css'
-
-/**
- * @name header
- * @component
- *
- * @param {object} _props
- *
- * @returns {React.ReactNode}
- */
-
-function Header(_props) {
+function Header() {
   return (
     <div className={styles.container}>
       <img src={logo} alt="Weka Logo" width="200px" />
@@ -22,11 +10,7 @@ function Header(_props) {
         Chaos Lab
       </span>
     </div>
-  )
+  );
 }
 
-Header.propTypes = {}
-
-export {
-  Header as default,
-}
+export default Header;

@@ -1,130 +1,57 @@
-// client/src/App.jsx
-import { useState } from 'react';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { Header, ScenarioCard, ScenarioContainer } from './components';
+import React, { useState, useCallback } from 'react';
+import TerminalWindow from './components/TerminalWindow';
 import TerminalView from './components/TerminalView';
-import './App.css'; // Your main app styles
-// You can add specific styles for .app-container or .terminal-view-wrapper here if needed
-
-const theme = createTheme({
-  // Your theme overrides
-});
+import './App.css';
 
 function App() {
-  const [terminalSession, setTerminalSession] = useState(null);
+  const [session, setSession] = useState(null);
 
-  const handleStartScenario = (repoName, sessionId, websocketPath) => {
-    setTerminalSession({ repoName, sessionId, websocketPath });
-  };
+  // This function creates a "session" object when the button is clicked.
+  // This is the trigger that will cause the pop-out window to render.
+  const openTerminalWindow = useCallback(() => {
+    setSession({
+      sessionId: "test-session",
+      websocketPath: "/terminal",
+    });
+  }, []);
 
-  const handleCloseTerminalAndCleanup = () => {
-    if (terminalSession && terminalSession.sessionId) {
-      console.log(`App.jsx: Closing terminal for session ${terminalSession.sessionId}`);
-    }
-    setTerminalSession(null); // This will unmount TerminalView and trigger its cleanup
-  };
+  // This function clears the session, which causes the pop-out window to unmount and close.
+  const closeTerminalWindow = useCallback(() => {
+    setSession(null);
+  }, []);
 
   return (
-    <ThemeProvider theme={theme}>
-      {/* .app-container can be styled in App.css for overall page layout if desired */}
-      <div className="app-container"> 
-        <Header />
+    <div className="app-container">
+      <h1>Chaos Lab</h1>
+      <p>Click the button below to test the pop-out window.</p>
+      
+      <button 
+        onClick={openTerminalWindow}
+        style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer' }}
+        // The button is disabled if a terminal is already open.
+        disabled={!!session}
+      >
+        Open Terminal Window
+      </button>
 
-        {terminalSession ? (
-          // .terminal-view-wrapper is styled by TerminalView.css for centering the terminal block
-          <div className="terminal-view-wrapper"> 
-            <h2 style={{ color: '#ebdbb2', fontFamily: 'var(--primary-font)' }}>
-              Terminal for {terminalSession.repoName} (Session: {terminalSession.sessionId})
+      {/* The TerminalWindow will only be created and rendered if a session exists */}
+      {session && (
+        <TerminalWindow onClose={closeTerminalWindow}>
+          <div style={{ padding: '1rem', height: '100vh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+            <h2 style={{ color: '#ebdbb2', fontFamily: 'monospace', flexShrink: 0 }}>
+              Chaos Lab Terminal
             </h2>
             <TerminalView
-              sessionId={terminalSession.sessionId}
-              websocketPath={terminalSession.websocketPath}
-              onCloseTerminal={handleCloseTerminalAndCleanup} 
+              sessionId={session.sessionId}
+              websocketPath={session.websocketPath}
             />
-            <button 
-              onClick={handleCloseTerminalAndCleanup} 
-              style={{ 
-                marginTop: '1.5rem', 
-                padding: '0.75em 1.5em', 
-                backgroundColor: '#458588', // Gruvbox blue
-                color: '#ebdbb2',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '0.9em'
-              }}
-            >
-              Close Terminal & Destroy Scenario
-            </button>
           </div>
-        ) : (
-          <ScenarioContainer>
-            {/* ScenarioCards as before, passing onStartScenario */}
-            <ScenarioCard
-              label="Weka Fully Installed"
-              repo="weka-fully-installed"
-              onStartScenario={handleStartScenario}
-            />
-            <ScenarioCard
-              label="Secret Agent Man"
-              repo="secret-agent-man"
-              onStartScenario={handleStartScenario}
-            />
-            <ScenarioCard
-              label="Dual Backend Failure"
-              repo="dual-backend-failure"
-              onStartScenario={handleStartScenario}
-            />
-            <ScenarioCard
-              label="Drives'ing me crazy"
-              repo="drives-ing-me-crazy"
-              onStartScenario={handleStartScenario}
-            />
-            <ScenarioCard
-              label="Setup Weka"
-              repo="setup-weka"
-              onStartScenario={handleStartScenario}
-            />
-            <ScenarioCard
-              label="Client Chaos Showcase"
-              repo="client-chaos-showcase"
-              onStartScenario={handleStartScenario}
-            />
-            <ScenarioCard
-              label="TA-Tool"
-              repo="TA-Tool"
-              onStartScenario={handleStartScenario}
-            />
-            <ScenarioCard
-              label="Krazy-k8s"
-              repo="krazy-k8s"
-              onStartScenario={handleStartScenario}
-            />
-            <ScenarioCard
-              label="CSI-Basic-Lab"
-              repo="csi-basic-lab"
-              onStartScenario={handleStartScenario}
-            />
-            <ScenarioCard
-              label="It's All About that Trace"
-              repo="its-all-about-that-trace"
-              onStartScenario={handleStartScenario}
-            />
-            <ScenarioCard
-              label="No Bucket Quorum"
-              repo="no-bucket-quorum"
-              onStartScenario={handleStartScenario}
-            />
-            <ScenarioCard
-              label="Kubernetes+Weka"
-              repo="kubernetes+weka"
-              onStartScenario={handleStartScenario}
-            />
-          </ScenarioContainer>
-        )}
-      </div>
-    </ThemeProvider>
+        </TerminalWindow>
+      )}
+    </div>
   );
 }
 
 export default App;
+
+
