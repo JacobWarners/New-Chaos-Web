@@ -3,9 +3,8 @@ import { createPortal } from 'react-dom';
 import PropTypes from 'prop-types';
 
 function TerminalWindow({ isOpen, children, onClose }) {
-  // Use a ref to hold the container div. This is more stable than state and avoids re-renders.
+  const terminalWindowRef = useRef(null);
   const containerRef = useRef(null);
-  const terminalRef = useRef(null)
 
   // Lazily create the container div only once.
   if (!containerRef.current) {
@@ -13,62 +12,58 @@ function TerminalWindow({ isOpen, children, onClose }) {
   }
 
   useEffect(() => {
-    if (terminalRef.current || !isOpen) {
-      return
+    // If the window should be open but isn't, open it.
+    if (isOpen && !terminalWindowRef.current) {
+      const newWindow = window.open('', '', 'width=1200,height=800,left=200,top=200');
+      terminalWindowRef.current = newWindow;
+
+      // Append the container for React content
+      newWindow.document.body.appendChild(containerRef.current);
+      newWindow.document.title = "Chaos Lab Terminal";
+
+      // Style the new window's body
+      const doc = newWindow.document;
+      doc.body.style.margin = '0';
+      doc.body.style.backgroundColor = '#1d2021';
+
+      // Copy same-origin stylesheets
+      Array.from(document.styleSheets)
+        .filter(sheet => !sheet.href || sheet.href.startsWith(window.location.origin))
+        .forEach(sheet => {
+          try {
+            const cssRules = Array.from(sheet.cssRules).map(rule => rule.cssText).join('');
+            const style = doc.createElement('style');
+            style.textContent = cssRules;
+            doc.head.appendChild(style);
+          } catch (e) {
+            console.warn('Could not copy stylesheet:', e);
+          }
+        });
+      
+      // When the user manually closes the pop-out, trigger the onClose callback
+      newWindow.addEventListener('beforeunload', onClose);
     }
 
-    // This effect runs only once when the component mounts.
-    const newWindow = window.open('', '', 'width=1200,height=800,left=200,top=200');
-    terminalRef.current = newWindow
-    console.log(newWindow)
-    // Attach our persistent container div to the new window.
-    console.log(containerRef.current)
-    newWindow.document.body.appendChild(containerRef.current);
-    newWindow.document.title = "Chaos Lab Terminal";
-
-    // Add event listener for when the user manually closes the pop-up.
-    newWindow.addEventListener('beforeunload', onClose);
-
-    // Style the new window's body.
-    const doc = newWindow.document;
-    doc.body.style.margin = '0';
-    doc.body.style.backgroundColor = '#1d2021';
-    
-    // Copy only same-origin stylesheets to prevent cross-origin security errors.
-    Array.from(document.styleSheets)
-      .filter(sheet => !sheet.href || sheet.href.startsWith(window.location.origin))
-      .forEach(sheet => {
-        try {
-          const cssRules = Array.from(sheet.cssRules).map(rule => rule.cssText).join('');
-          const style = doc.createElement('style');
-          style.textContent = cssRules;
-          doc.head.appendChild(style);
-        } catch (e) {
-          // Ignore stylesheets that can't be accessed.
-        }
-      });
-      
-    // This is the cleanup function that runs when the component unmounts.
+    // This cleanup function will run when isOpen becomes false or the component unmounts
     return () => {
-      newWindow.removeEventListener('beforeunload', onClose);
-      newWindow.close();
-    };
-  }, [onClose]);
-
-  useEffect(
-    () => {
-      if (!isOpen) {
-        terminalRef.current = null
+      if (terminalWindowRef.current) {
+        // Remove the event listener to prevent memory leaks
+        terminalWindowRef.current.removeEventListener('beforeunload', onClose);
+        // Close the window
+        terminalWindowRef.current.close();
+        // Clear the ref
+        terminalWindowRef.current = null;
       }
-    },
-    [isOpen]
-  )
+    };
+    // The effect now correctly depends on isOpen and onClose
+  }, [isOpen, onClose]);
 
+  // Only render the portal if the window is supposed to be open.
   if (!isOpen) {
-    return null
+    return null;
   }
 
-  // Use the portal to render the children into our persistent container div.
+  // Use the portal to render the children into the pop-out window's container div.
   return createPortal(children, containerRef.current);
 }
 
@@ -79,5 +74,3 @@ TerminalWindow.propTypes = {
 };
 
 export default TerminalWindow;
-
-
