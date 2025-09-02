@@ -90,9 +90,15 @@ func scenarioHandler(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }
 
+func indexView(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"Message": "Hello World"})
+}
+
 func main() {
 	http.HandleFunc("/api/scenarios", scenarioHandler)
 	http.HandleFunc("/terminal", terminalHandler)
+	http.HandleFunc("/", indexView)
 
 	log.Println("Go server listening on :5000")
 	if err := http.ListenAndServe(":5000", nil); err != nil {
