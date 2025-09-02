@@ -1,0 +1,72 @@
+/* client/src/components/TerminalView.css */
+
+.terminal-container-wrapper {
+  display: flex; 
+  flex-direction: column; /* Stack children vertically (like h2 and terminal-instance) */
+  align-items: center; /* Center children horizontally */
+  width: 100%;
+  padding: 1rem 0; /* Padding above/below the entire terminal section */
+}
+
+.terminal-instance {
+  width: 90%; /* Terminal block takes 90% of the wrapper's width */
+  max-width: 1000px; /* But not more than 1000px */
+  height: 500px; /* Fixed height for the terminal */
+  
+  border: 1px solid #3c3836; /* Gruvbox dark gray border */
+  /* Padding here is for the space between the border and the xterm.js canvas */
+  padding: 8px; 
+  box-sizing: border-box;
+  background-color: #282828; /* Gruvbox dark background for the container */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  overflow: hidden; /* Important: xterm.js handles its own scrolling */
+  
+  /* THIS IS KEY FOR TEXT ALIGNMENT: */
+  text-align: left !important; 
+}
+
+/* Ensure xterm.js internals fill the .terminal-instance div */
+.terminal-instance .xterm {
+  height: 100% !important; 
+  width: 100% !important;
+  padding: 0; /* xterm canvas itself should not have extra padding */
+  /* text-align: left is inherited from .terminal-instance */
+}
+
+.terminal-instance .xterm-viewport {
+  width: 100% !important; /* Allow xterm to manage viewport width */
+  overflow-y: scroll; /* Let xterm manage its scrollbar */
+  /* text-align: left is inherited */
+}
+
+.terminal-instance .xterm-screen {
+  width: 100% !important; /* Allow xterm to manage screen width */
+  /* text-align: left is inherited */
+}
+
+/* Targeting the rows directly might not be needed if .terminal-instance sets text-align: left */
+/* .terminal-instance .xterm-screen .xterm-rows div {
+  text-align: left !important; 
+} */
+
+
+/* Gruvbox-like Scrollbar Styling (for Webkit browsers) */
+.terminal-instance .xterm-viewport::-webkit-scrollbar {
+  width: 12px;
+}
+
+.terminal-instance .xterm-viewport::-webkit-scrollbar-track {
+  background: #3c3836; /* Slightly darker Gruvbox gray */
+  border-radius: 6px;
+}
+
+.terminal-instance .xterm-viewport::-webkit-scrollbar-thumb {
+  background: #665c54; /* Gruvbox medium gray */
+  border-radius: 6px;
+  border: 2px solid #3c3836; /* Creates a small border around the thumb */
+}
+
+.terminal-instance .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: #7c6f64; /* Lighter gray on hover */
+}

@@ -1,0 +1,24 @@
+.button {
+  position: absolute;
+
+  margin: 0;
+  padding: 0;
+
+  height: 2rem;
+  width: 2rem;
+
+  top: -0.5rem;
+  right: -0.5rem;
+
+  border-radius: 100%;
+  border: 1px solid var(--weka-purple);
+  background-color: var(--weka-fuchsia);
+}
+
+.button:active {
+  top: calc(-0.5rem + 2px);
+}
+
+.button:hover {
+  background-color: var(--weka-purple);
+}
