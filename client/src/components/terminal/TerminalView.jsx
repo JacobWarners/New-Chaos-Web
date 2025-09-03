@@ -2,85 +2,81 @@ import { useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
+import { ClipboardAddon } from 'xterm-addon-clipboard'; // *** NEW ***
 import 'xterm/css/xterm.css';
 import './TerminalView.css';
 
-function TerminalView({ sessionId, websocketPath }) {
+function TerminalView({ sessionId, websocketPath, shouldRunTerraform }) {
   const termContainerRef = useRef(null);
   const termRef = useRef(null);
   const socketRef = useRef(null);
 
   useEffect(() => {
-    if (!termContainerRef.current || !sessionId) {
-      return;
-    }
+    if (!termContainerRef.current || !sessionId) return;
 
-    // --- 1. Initialize Terminal ---
+    // This effect should only run once to set up the terminal
     if (!termRef.current) {
-        const term = new Terminal({
-            cursorBlink: true,
-            fontFamily: 'monospace',
-            fontSize: 14,
-        });
-        const fitAddon = new FitAddon();
-        term.loadAddon(fitAddon);
-        term.open(termContainerRef.current);
-        fitAddon.fit();
-        termRef.current = term;
-
-        const handleResize = () => fitAddon.fit();
-        window.addEventListener('resize', handleResize);
+      const term = new Terminal({
+        cursorBlink: true,
+        fontFamily: 'monospace',
+        fontSize: 14,
+        allowProposedApi: true, // Needed for clipboard addon
+      });
+      const fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
+      term.loadAddon(new ClipboardAddon()); // *** THE FIX for copy/paste ***
+      term.open(termContainerRef.current);
+      
+      // *** THE FIX for focus ***
+      term.focus(); 
+      fitAddon.fit();
+      window.addEventListener('resize', () => fitAddon.fit());
+      
+      termRef.current = term;
     }
-    
-    // --- 2. Establish WebSocket Connection ---
+
+    const term = termRef.current;
     const socketProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const socketUrl = `${socketProtocol}//${window.location.hostname}:5000${websocketPath}`;
     const socket = new WebSocket(socketUrl);
     socketRef.current = socket;
 
-    // --- 3. Wire Up Event Listeners ---
     socket.onopen = () => {
-      termRef.current.writeln('\r\n\x1b[32mWebSocket: Connected to backend session.\x1b[0m\r\n');
+      term.writeln('\r\n\x1b[32mWebSocket: Connected to backend PTY.\x1b[0m\r\n');
+      if (shouldRunTerraform) {
+        term.writeln('\x1b[33mSending command to backend to start Terraform...\x1b[0m\r\n');
+        socket.send(JSON.stringify({ type: 'run_terraform' }));
+      }
     };
 
-    // THIS IS FIX #1: Parse incoming messages from the server
+    // *** THE FIX for UI lag ***
+    // This handler now ONLY expects our structured JSON messages
     socket.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
-        // We expect JSON like: { "output": "some text" }
-        if (data && typeof data.output === 'string') {
-          termRef.current.write(data.output);
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'pty_output' && typeof msg.payload === 'string') {
+          term.write(msg.payload);
         }
       } catch (e) {
-        console.error("Failed to parse JSON from server:", event.data, e);
+        console.error("Failed to parse message from server:", event.data, e);
       }
     };
     
-    socket.onclose = () => {
-      termRef.current.writeln('\r\n\x1b[31mWebSocket Disconnected.\x1b[0m');
-    };
+    socket.onclose = () => term.writeln('\r\n\x1b[31mWebSocket Disconnected.\x1b[0m');
+    socket.onerror = (error) => console.error('WebSocket Error:', error);
 
-    socket.onerror = (error) => {
-      console.error('WebSocket Error:', error);
-      termRef.current.writeln('\r\n\x1b[31mWebSocket Connection Error.\x1b[0m');
-    };
-
-    // THIS IS FIX #2: Wrap user input in a JSON object before sending
-    const dataListener = termRef.current.onData((data) => {
-        if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ input: data }));
-        }
+    const dataListener = term.onData((data) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        // Wrap user input in our JSON protocol
+        socket.send(JSON.stringify({ type: 'pty_input', payload: data }));
+      }
     });
 
-    // --- 5. Cleanup Logic ---
     return () => {
       dataListener.dispose();
-      if (socketRef.current && socketRef.current.readyState < 2) {
-          socketRef.current.close();
-      }
+      if (socketRef.current) socketRef.current.close();
     };
-
-  }, [sessionId, websocketPath]);
+  }, [sessionId, websocketPath, shouldRunTerraform]);
 
   return <div ref={termContainerRef} style={{ width: '100%', height: '100%' }} />;
 }
@@ -88,6 +84,7 @@ function TerminalView({ sessionId, websocketPath }) {
 TerminalView.propTypes = {
   sessionId: PropTypes.string,
   websocketPath: PropTypes.string,
+  shouldRunTerraform: PropTypes.bool,
 };
 
 export default TerminalView;

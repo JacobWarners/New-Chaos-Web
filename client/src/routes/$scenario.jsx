@@ -10,27 +10,22 @@ export const Route = createFileRoute('/$scenario')({
 
 function ScenarioRoute() {
   const { scenario } = Route.useParams()
-
-  console.log(`The scenario is: ${scenario}`)
-
   const [session, setSession] = useState(null);
 
-  // This function creates a "session" object when the button is clicked.
-  // This is the trigger that will cause the pop-out window to render.
+  // This function now simply opens the terminal.
+  // The command to run terraform will be sent by TerminalView.
   const openTerminalWindow = useCallback(() => {
     setSession({
-      sessionId: "test-session",
+      sessionId: "test-session", // A unique ID for the session
       websocketPath: "/terminal",
+      // NEW: Tell the terminal component to trigger the terraform run
+      shouldRunTerraform: true,
     });
   }, []);
 
-  // This function clears the session, which causes the pop-out window to unmount and close.
-  const closeTerminalWindow = useCallback(
-    () => {
-      setSession(null);
-    },
-    []
-  );
+  const closeTerminalWindow = useCallback(() => {
+    setSession(null);
+  }, []);
 
   const isOpen = !!session
 
@@ -38,15 +33,14 @@ function ScenarioRoute() {
     <div className="app-container">
       <h1>Chaos Lab</h1>
       <p>The scenario is: {scenario}</p>
-      <p>Click the button below to test the pop-out window.</p>
+      <p>Click the button below to start the Terraform script and open the terminal.</p>
 
       <button
         onClick={openTerminalWindow}
         style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer' }}
-        // The button is disabled if a terminal is already open.
         disabled={isOpen}
       >
-        Open Terminal Window
+        Run Terraform & Open Terminal
       </button>
 
       {/* The TerminalWindow will only be created and rendered if a session exists */}
@@ -55,10 +49,13 @@ function ScenarioRoute() {
           <h2 style={{ color: '#ebdbb2', fontFamily: 'monospace', flexShrink: 0 }}>
             Chaos Lab Terminal
           </h2>
-          <TerminalView
-            sessionId={session?.sessionId}
-            websocketPath={session?.websocketPath}
-          />
+          {session && (
+            <TerminalView
+              sessionId={session.sessionId}
+              websocketPath={session.websocketPath}
+              shouldRunTerraform={session.shouldRunTerraform}
+            />
+          )}
         </div>
       </TerminalWindow>
     </div>
