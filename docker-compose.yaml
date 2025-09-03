@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5000"
+    volumes:
+      - ~/.aws:/root/.aws:ro
+      - ~/.ssh/id_ed25519chaosweb:/root/.ssh/id_git_rsa:ro

@@ -18,12 +18,13 @@ function ScenarioRoute() {
   const ptyBufferRef = useRef([]);
 
   const setTerminalDataHandler = useCallback((handler) => {
+    // This logic remains the same
     console.log("TerminalView handler has been", handler ? "REGISTERED." : "UNREGISTERED.");
     terminalDataHandlerRef.current = handler;
     if (handler && ptyBufferRef.current.length > 0) {
       console.log(`[SCENARIO] Flushing ${ptyBufferRef.current.length} buffered PTY messages.`);
       ptyBufferRef.current.forEach(data => handler(data));
-      ptyBufferRef.current = []; // Clear the buffer
+      ptyBufferRef.current = [];
     }
   }, []);
 
@@ -31,8 +32,17 @@ function ScenarioRoute() {
     if (isConnecting || socketRef.current) return;
     setIsConnecting(true);
     setConnectionError(null);
+
     const socketProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const socketUrl = `${socketProtocol}//${window.location.hostname}:5000/terminal`;
+
+    // --- THIS IS THE FIX ---
+    // The WebSocket should connect to the same host the page is served from.
+    // window.location.host will correctly be "localhost:5173" in this environment.
+    // The Go server will receive this request because of the port mapping.
+    const socketUrl = `${socketProtocol}//${window.location.host}/terminal`;
+    
+    console.log(`Attempting to connect WebSocket to: ${socketUrl}`); // Added for debugging
+
     const ws = new WebSocket(socketUrl);
     socketRef.current = ws;
 
@@ -43,7 +53,6 @@ function ScenarioRoute() {
 
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
-      // console.log("[SCENARIO] WebSocket message received:", msg); // You can uncomment for debugging
       if (msg.type === 'status' && msg.payload === 'connected') {
         setIsConnecting(false);
         setIsTerminalOpen(true);
@@ -75,6 +84,7 @@ function ScenarioRoute() {
   }, [isConnecting, isTerminalOpen]);
 
   const closeTerminalWindow = useCallback(() => {
+    // This logic remains the same
     setIsTerminalOpen(false);
     if (socketRef.current) {
       socketRef.current.close();
@@ -84,6 +94,7 @@ function ScenarioRoute() {
   }, []);
   
   useEffect(() => {
+    // This logic remains the same
     return () => {
       if (socketRef.current) {
         socketRef.current.close();
@@ -91,6 +102,7 @@ function ScenarioRoute() {
     };
   }, []);
 
+  // The rest of the return statement is the same as your working version
   return (
     <div className="app-container">
       <h1>Chaos Lab</h1>
@@ -98,7 +110,6 @@ function ScenarioRoute() {
       <button onClick={startConnection} style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer' }} disabled={isConnecting || isTerminalOpen}>
         {isConnecting ? 'Connecting...' : 'Run Terraform & Open Terminal'}
       </button>
-      
       {isConnecting && (
         <div className="loading-container">
           <p>Provisioning AWS instance and establishing SSH connection...</p>
@@ -106,14 +117,12 @@ function ScenarioRoute() {
           <p className="loading-subtext">This process can take up to 5 minutes</p>
         </div>
       )}
-
       {connectionError && (
         <div className="error-container">
           <span><strong>Error:</strong> {connectionError}</span>
           <button onClick={() => setConnectionError(null)}>Dismiss</button>
         </div>
       )}
-
       {isTerminalOpen && socketRef.current && (
         <TerminalWindow isOpen={isTerminalOpen} onClose={closeTerminalWindow}>
           <div style={{ padding: '1rem', height: '100vh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
@@ -130,4 +139,3 @@ function ScenarioRoute() {
     </div>
   );
 }
-

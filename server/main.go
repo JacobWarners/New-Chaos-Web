@@ -44,9 +44,12 @@ func (w *SafeWebSocketWriter) WriteJSON(v interface{}) error {
 func runTerraformInTempDir(tempDir string, safeWS *SafeWebSocketWriter) error {
     log.Printf("Starting Terraform execution in directory: %s", tempDir)
     safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: fmt.Sprintf("Working directory: %s\r\n", tempDir)})
-    sourceTfFile := "../terraform/setup-weka.tf"
+    
+    // --- THE FIX ---
+    // The path is now relative to the /app working directory inside the container.
+    sourceTfFile := "./terraform/setup-weka.tf"
+
     destTfFile := filepath.Join(tempDir, "main.tf")
-    // Copy terraform file to temp directory
     log.Printf("Copying %s to %s", sourceTfFile, destTfFile)
     input, err := ioutil.ReadFile(sourceTfFile)
     if err != nil {
@@ -56,7 +59,6 @@ func runTerraformInTempDir(tempDir string, safeWS *SafeWebSocketWriter) error {
         return fmt.Errorf("failed to write terraform file to temp dir: %v", err)
     }
     safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: fmt.Sprintf("Copied terraform file to: %s\r\n", destTfFile)})
-    // Initialize terraform
     safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: "Running terraform init...\r\n"})
     initCmd := exec.Command("terraform", "init")
     initCmd.Dir = tempDir
@@ -66,18 +68,15 @@ func runTerraformInTempDir(tempDir string, safeWS *SafeWebSocketWriter) error {
         return fmt.Errorf("terraform init failed: %v", err)
     }
     safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: string(initOutput)})
-    // Apply terraform
     safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: "\r\nRunning terraform apply (this may take up to 5 minutes)...\r\n"})
     applyCmd := exec.Command("terraform", "apply", "-auto-approve")
     applyCmd.Dir = tempDir
-    // Use CombinedOutput to avoid concurrent writes
     applyOutput, err := applyCmd.CombinedOutput()
     if err != nil {
         safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: string(applyOutput)})
         return fmt.Errorf("terraform apply failed: %v", err)
     }
     safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: string(applyOutput)})
-    // List all files in the directory after terraform apply
     safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: "\r\n=== Files in terraform directory after apply ===\r\n"})
     files, err := ioutil.ReadDir(tempDir)
     if err == nil {
@@ -88,6 +87,9 @@ func runTerraformInTempDir(tempDir string, safeWS *SafeWebSocketWriter) error {
     return nil
 }
 
+// ... (The rest of the file is unchanged)
+// ... (runTerraformDestroy, findPEMFile, getInstanceIPFromFile, establishSSHConnection, handleConnections, wsWriter, main)
+// All other functions are correct
 func runTerraformDestroy(tempDir string) error {
     log.Printf("Starting Terraform destroy in directory: %s", tempDir)
     cmd := exec.Command("terraform", "destroy", "-parallelism=30", "-auto-approve")
@@ -369,13 +371,27 @@ func main() {
     if _, err := exec.LookPath("terraform"); err != nil {
         log.Fatal("terraform binary not found in PATH")
     }
-    tfPath := "../terraform/setup-weka.tf"
-    if _, err := os.Stat(tfPath); err != nil {
-        log.Printf("Warning: Cannot find terraform file at %s: %v", tfPath, err)
-    }
+
+    staticDir := "./static"
     http.HandleFunc("/terminal", handleConnections)
+    fs := http.FileServer(http.Dir(staticDir))
+
+    http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        path := filepath.Join(staticDir, r.URL.Path)
+        _, err := os.Stat(path)
+        if os.IsNotExist(err) {
+            http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
+            return
+        } else if err != nil {
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            return
+        }
+        fs.ServeHTTP(w, r)
+    })
+
     log.Println("Go server listening on :5000")
-    log.Println("WebSocket endpoint: ws://localhost:5000/terminal")
+    log.Println("API endpoint: ws://localhost:5000/terminal")
+    log.Println("Serving SPA frontend from the './static' directory")
     if err := http.ListenAndServe(":5000", nil); err != nil {
         log.Fatal("ListenAndServe: ", err)
     }
