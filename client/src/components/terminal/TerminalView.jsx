@@ -7,77 +7,85 @@ import './TerminalView.css';
 
 function TerminalView({ socket, setTerminalDataHandler }) {
   const termContainerRef = useRef(null);
-  // THIS IS THE KEY: Store the xterm.js instance in a ref to make it persistent across re-renders.
+  // Refs to hold instances so they persist across re-renders
   const termRef = useRef(null);
+  const fitAddonRef = useRef(null);
 
-  // This effect runs only ONCE when the component mounts to CREATE the terminal.
+  // This effect runs only ONCE to CREATE and DESTROY the terminal UI.
+  // Its empty dependency array `[]` makes it immune to parent re-renders and Strict Mode remounts.
   useEffect(() => {
-    if (!termContainerRef.current) return;
-
-    console.log("[TerminalView] Initializing xterm.js instance...");
-
+    if (!termContainerRef.current || termRef.current) {
+      return;
+    }
+    console.log("[TerminalView] Initializing xterm.js UI instance...");
     const term = new Terminal({
       cursorBlink: true,
-      fontFamily: 'monospace',
-      fontSize: 14,
+      convertEol: true,
+      theme: { // Your preferred Gruvbox theme
+        background: '#282828', foreground: '#ebdbb2', cursor: '#fe8019',
+        selectionBackground: 'rgba(146, 131, 116, 0.5)',
+        black: '#282828', brightBlack: '#928374', red: '#cc241d', brightRed: '#fb4934',
+        green: '#98971a', brightGreen: '#b8bb26', yellow: '#d79921', brightYellow: '#fabd2f',
+        blue: '#458588', brightBlue: '#83a598', magenta: '#b16286', brightMagenta: '#d3869b',
+        cyan: '#689d6a', brightCyan: '#8ec07c', white: '#a89984', brightWhite: '#ebdbb2',
+      },
     });
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    term.open(termContainerRef.current);
-    term.focus();
-    fitAddon.fit();
-    
-    // Store the created instance in our persistent ref.
     termRef.current = term;
 
-    const resizeListener = () => fitAddon.fit();
-    window.addEventListener('resize', resizeListener);
-
-    // This is the cleanup function that runs when the component truly unmounts for good.
+    const fitAddon = new FitAddon();
+    fitAddonRef.current = fitAddon;
+    term.loadAddon(fitAddon);
+    term.open(termContainerRef.current);
+    
+    const handleResize = () => {
+        try {
+            fitAddon.fit();
+        } catch (e) {
+            console.warn("Could not fit terminal during resize:", e.message);
+        }
+    };
+    
+    handleResize(); // Initial fit
+    window.addEventListener('resize', handleResize);
+    
     return () => {
-      console.log("[TerminalView] Disposing xterm.js instance.");
-      window.removeEventListener('resize', resizeListener);
-      // Check if termRef.current exists before disposing
+      console.log("[TerminalView] Disposing xterm.js UI instance.");
+      window.removeEventListener('resize', handleResize);
       if (termRef.current) {
         termRef.current.dispose();
         termRef.current = null;
       }
     };
-  }, []); // Empty dependency array means this effect runs only on mount and unmount.
+  }, []); // Empty dependency array is KEY to stability.
 
-
-  // This separate effect handles the COMMUNICATION logic.
+  // This separate effect handles COMMUNICATION logic.
+  // It can re-run safely if the socket prop changes, without destroying the UI.
   useEffect(() => {
-    // Don't do anything until the socket is ready and the terminal has been created.
-    if (!socket || !setTerminalDataHandler || !termRef.current) return;
-
+    if (!socket || !setTerminalDataHandler || !termRef.current) {
+      return;
+    }
     const term = termRef.current;
-
-    // The function to write data to the terminal. It's stable because it reads from the ref.
+    
     const writeToTerminal = (data) => {
       term.write(data);
     };
-
-    // Register the handler with the parent component.
+    
+    // Register the data handler with the parent component ($scenario.jsx)
     setTerminalDataHandler(writeToTerminal);
 
-    // Set up the listener for user input.
     const dataListener = term.onData((data) => {
       if (socket.readyState === WebSocket.OPEN) {
-        console.log("-> [FE-MSG-SEND]", { type: 'pty_input', payload: data });
         socket.send(JSON.stringify({ type: 'pty_input', payload: data }));
       }
     });
 
-    // When the component re-renders or unmounts, unregister the handler and listener.
+    // Cleanup for THIS effect
     return () => {
+      console.log("[TerminalView] Cleaning up communication listeners.");
       setTerminalDataHandler(null);
-      if (dataListener) {
-        dataListener.dispose();
-      }
+      dataListener.dispose();
     };
-  }, [socket, setTerminalDataHandler]); // This effect re-runs if the socket or handler function changes.
-
+  }, [socket, setTerminalDataHandler]);
 
   return <div ref={termContainerRef} style={{ width: '100%', height: '100%' }} />;
 }
