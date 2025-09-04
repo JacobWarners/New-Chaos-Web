@@ -7,12 +7,10 @@ import './TerminalView.css';
 
 function TerminalView({ socket, setTerminalDataHandler }) {
   const termContainerRef = useRef(null);
-  // Refs to hold instances so they persist across re-renders
   const termRef = useRef(null);
   const fitAddonRef = useRef(null);
 
   // This effect runs only ONCE to CREATE and DESTROY the terminal UI.
-  // Its empty dependency array `[]` makes it immune to parent re-renders and Strict Mode remounts.
   useEffect(() => {
     if (!termContainerRef.current || termRef.current) {
       return;
@@ -21,7 +19,7 @@ function TerminalView({ socket, setTerminalDataHandler }) {
     const term = new Terminal({
       cursorBlink: true,
       convertEol: true,
-      theme: { // Your preferred Gruvbox theme
+      theme: {
         background: '#282828', foreground: '#ebdbb2', cursor: '#fe8019',
         selectionBackground: 'rgba(146, 131, 116, 0.5)',
         black: '#282828', brightBlack: '#928374', red: '#cc241d', brightRed: '#fb4934',
@@ -36,18 +34,17 @@ function TerminalView({ socket, setTerminalDataHandler }) {
     fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);
     term.open(termContainerRef.current);
-    
+
     const handleResize = () => {
-        try {
-            fitAddon.fit();
-        } catch (e) {
-            console.warn("Could not fit terminal during resize:", e.message);
-        }
+      try {
+        fitAddon.fit();
+      } catch (e) {
+        console.warn("Could not fit terminal during resize:", e.message);
+      }
     };
-    
-    handleResize(); // Initial fit
+    handleResize();
     window.addEventListener('resize', handleResize);
-    
+
     return () => {
       console.log("[TerminalView] Disposing xterm.js UI instance.");
       window.removeEventListener('resize', handleResize);
@@ -56,10 +53,9 @@ function TerminalView({ socket, setTerminalDataHandler }) {
         termRef.current = null;
       }
     };
-  }, []); // Empty dependency array is KEY to stability.
+  }, []); // Empty dependency array is KEY.
 
   // This separate effect handles COMMUNICATION logic.
-  // It can re-run safely if the socket prop changes, without destroying the UI.
   useEffect(() => {
     if (!socket || !setTerminalDataHandler || !termRef.current) {
       return;
@@ -70,7 +66,6 @@ function TerminalView({ socket, setTerminalDataHandler }) {
       term.write(data);
     };
     
-    // Register the data handler with the parent component ($scenario.jsx)
     setTerminalDataHandler(writeToTerminal);
 
     const dataListener = term.onData((data) => {
@@ -79,7 +74,6 @@ function TerminalView({ socket, setTerminalDataHandler }) {
       }
     });
 
-    // Cleanup for THIS effect
     return () => {
       console.log("[TerminalView] Cleaning up communication listeners.");
       setTerminalDataHandler(null);

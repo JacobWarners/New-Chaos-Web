@@ -47,6 +47,7 @@ COPY --from=backend-builder /server_app .
 COPY terraform/ ./terraform/
 # Copy the built React app assets
 COPY --from=frontend-builder /app/dist ./static
+COPY entrypoint.sh .
 
 EXPOSE 5000
 CMD ["./server_app"]
