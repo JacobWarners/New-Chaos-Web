@@ -87,7 +87,7 @@ function TerminalView({ socket, setTerminalDataHandler }) {
     };
   }, [socket, setTerminalDataHandler]);
 
-  return <div ref={termContainerRef} style={{ width: '100%', height: '100%' }} />;
+  return <div id="terminal" ref={termContainerRef} style={{ width: '100%', height: '100%' }} />;
 }
 
 TerminalView.propTypes = {

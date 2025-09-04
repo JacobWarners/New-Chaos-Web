@@ -125,7 +125,7 @@ function ScenarioRoute() {
       )}
       {isTerminalOpen && socketRef.current && (
         <TerminalWindow isOpen={isTerminalOpen} onClose={closeTerminalWindow}>
-          <div style={{ padding: '1rem', height: '100vh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '1rem', height: '100vh', width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
             <h2 style={{ color: '#ebdbb2', fontFamily: 'monospace', flexShrink: 0 }}>
               Chaos Lab Terminal - AWS Instance
             </h2>

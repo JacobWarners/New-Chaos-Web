@@ -20,6 +20,7 @@ function TerminalWindow({ isOpen, children, onClose }) {
       // Append the container for React content
       newWindow.document.body.appendChild(containerRef.current);
       newWindow.document.title = "Chaos Lab Terminal";
+      containerRef.current.style.width = "100%";
 
       // Style the new window's body
       const doc = newWindow.document;
