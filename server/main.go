@@ -23,7 +23,7 @@ import (
     "github.com/gorilla/websocket"
 )
 
-// WebSocketMessage is a unified message structure. The payload will always be a string.
+// WebSocketMessage is a unified message structure.
 type WebSocketMessage struct {
     Type    string `json:"type"`
     Payload string `json:"payload,omitempty"`
@@ -61,18 +61,15 @@ func connectToDB() (*sql.DB, error) {
         os.Getenv("DB_PORT"),
         os.Getenv("DB_NAME"),
     )
-
     db, err := sql.Open("pgx", connStr)
     if err != nil {
         return nil, fmt.Errorf("failed to open database connection: %w", err)
     }
-
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
     if err := db.PingContext(ctx); err != nil {
         return nil, fmt.Errorf("failed to ping database: %w", err)
     }
-
     log.Println("Successfully connected to the database.")
     return db, nil
 }
@@ -108,9 +105,7 @@ func startSessionWatcher(db *sql.DB) {
                 log.Printf("Watcher: Error scanning expired session row: %v", err)
                 continue
             }
-
             log.Printf("Watcher: Session %s has expired. Triggering Terraform destroy in %s", sessionID, terraformDir)
-
             go func(dir, sID string) {
                 if err := runTerraformDestroy(dir); err != nil {
                     log.Printf("CRITICAL: Background Terraform destroy failed for session %s. Error: %v", sID, err)
@@ -130,7 +125,7 @@ func startSessionWatcher(db *sql.DB) {
     }
 }
 
-// handleConnections manages the lifecycle of a WebSocket connection and its associated session.
+// handleConnections manages the lifecycle of a WebSocket connection.
 func handleConnections(w http.ResponseWriter, r *http.Request, db *sql.DB) {
     ws, err := upgrader.Upgrade(w, r, nil)
     if err != nil {
@@ -147,16 +142,10 @@ func handleConnections(w http.ResponseWriter, r *http.Request, db *sql.DB) {
     var stdin io.WriteCloser
     sshReady := make(chan struct{})
 
-    // Defer function handles cleanup when the WebSocket closes for any reason.
     defer func() {
         log.Printf("Closing SSH connections for session: %s", sessionID)
-        if sshSession != nil {
-            sshSession.Close()
-        }
-        if sshClient != nil {
-            sshClient.Close()
-        }
-
+        if sshSession != nil { sshSession.Close() }
+        if sshClient != nil { sshClient.Close() }
         if sessionID != "" {
             go func(sID string) {
                 log.Printf("Starting immediate cleanup for disconnected session %s...", sID)
@@ -185,7 +174,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, db *sql.DB) {
         _, msgBytes, err := ws.ReadMessage()
         if err != nil {
             log.Printf("Client disconnected or read error for session %s: %v", sessionID, err)
-            return // Exit the function, triggering the defer block
+            return
         }
 
         var msg WebSocketMessage
@@ -196,15 +185,21 @@ func handleConnections(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 
         switch msg.Type {
         case "run_terraform":
-            go func() {
+            scenarioName := msg.Payload
+            if scenarioName == "" {
+                safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: "No scenario name provided."})
+                continue
+            }
+            log.Printf("Received run_terraform for scenario: %s", scenarioName)
+
+            go func(scenario string) {
                 tempDir, err := ioutil.TempDir("", "terraform-session-")
                 if err != nil {
                     safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to create temp directory: %v", err)})
                     return
                 }
                 userEmail := "test-user@example.com"
-                initialExpiration := time.Now().Add(30 * time.Minute)
-
+                initialExpiration := time.Now().Add(15 * time.Minute)
                 query := `
                     INSERT INTO sessions (user_email, status, terraform_dir, expires_at)
                     VALUES ($1, $2, $3, $4)
@@ -219,9 +214,9 @@ func handleConnections(w http.ResponseWriter, r *http.Request, db *sql.DB) {
                     return
                 }
                 log.Printf("Successfully created session with ID: %s in directory %s", sessionID, tempDir)
-                safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: fmt.Sprintf("Session ID: %s\r\nWorking directory: %s\r\n", sessionID, tempDir)})
+                safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: fmt.Sprintf("Session ID: %s\r\n", sessionID)})
 
-                if err := runTerraformInTempDir(tempDir, safeWS); err != nil {
+                if err := runTerraformInTempDir(scenario, tempDir, safeWS); err != nil {
                     safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: err.Error()})
                     db.ExecContext(context.Background(), "UPDATE sessions SET status = 'failed' WHERE id = $1", sessionID)
                     os.RemoveAll(tempDir)
@@ -229,64 +224,52 @@ func handleConnections(w http.ResponseWriter, r *http.Request, db *sql.DB) {
                     return
                 }
                 db.ExecContext(context.Background(), "UPDATE sessions SET status = 'active' WHERE id = $1", sessionID)
-
                 statusPayload, _ := json.Marshal(SessionStatusPayload{ExpiresAt: sessionExpiresAt})
                 safeWS.WriteJSON(WebSocketMessage{Type: "session_status", Payload: string(statusPayload)})
-
                 safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: "\r\n\x1b[32mTerraform apply completed.\x1b[0m\r\n"})
+
                 instanceIP, err := getInstanceIPFromFile(tempDir)
                 if err != nil {
-                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to get instance IP: %v", err)})
-                    ws.Close(); return
+                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to get instance IP: %v", err)}); ws.Close(); return
                 }
                 keyPath, err := findPEMFile(tempDir)
                 if err != nil {
-                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to find PEM file: %v", err)})
-                    ws.Close(); return
+                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to find PEM file: %v", err)}); ws.Close(); return
                 }
                 sshClient, err = establishSSHConnection(instanceIP, keyPath, safeWS)
                 if err != nil {
-                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to establish SSH connection: %v", err)})
-                    ws.Close(); return
+                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to establish SSH connection: %v", err)}); ws.Close(); return
                 }
                 sshSession, err = sshClient.NewSession()
                 if err != nil {
-                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to create SSH session: %v", err)})
-                    ws.Close(); return
+                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to create SSH session: %v", err)}); ws.Close(); return
                 }
                 modes := ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 14400, ssh.TTY_OP_OSPEED: 14400}
                 if err := sshSession.RequestPty("xterm-256color", 80, 40, modes); err != nil {
-                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to request PTY: %v", err)})
-                    ws.Close(); return
+                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to request PTY: %v", err)}); ws.Close(); return
                 }
                 stdout, err := sshSession.StdoutPipe()
                 if err != nil {
-                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to get stdout pipe: %v", err)})
-                    ws.Close(); return
+                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to get stdout pipe: %v", err)}); ws.Close(); return
                 }
                 stdin, err = sshSession.StdinPipe()
                 if err != nil {
-                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to get stdin pipe: %v", err)})
-                    ws.Close(); return
+                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to get stdin pipe: %v", err)}); ws.Close(); return
                 }
                 if err := sshSession.Shell(); err != nil {
-                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to start shell: %v", err)})
-                    ws.Close(); return
+                    safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: fmt.Sprintf("Failed to start shell: %v", err)}); ws.Close(); return
                 }
-                go func() {
-                    io.Copy(&wsWriter{safeWS, sessionID}, stdout)
-                }()
+                go func() { io.Copy(&wsWriter{safeWS, sessionID}, stdout) }()
                 close(sshReady)
                 safeWS.WriteJSON(WebSocketMessage{Type: "status", Payload: "connected"})
                 sshSession.Wait()
                 ws.Close()
-            }()
+            }(scenarioName)
+
         case "pty_input":
             select {
             case <-sshReady:
-                if stdin != nil {
-                    stdin.Write([]byte(msg.Payload))
-                }
+                if stdin != nil { stdin.Write([]byte(msg.Payload)) }
             default:
                 log.Printf("-> SSH[WARN]: Input received for session %s before SSH was ready. Input ignored.", sessionID)
             }
@@ -297,7 +280,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, db *sql.DB) {
             }
             query := `
                 UPDATE sessions
-                SET expires_at = expires_at + interval '30 minute'
+                SET expires_at = expires_at + interval '30 minutes'
                 WHERE id = $1
                 RETURNING expires_at;
             `
@@ -368,10 +351,7 @@ type wsWriter struct {
 }
 
 func (w *wsWriter) Write(p []byte) (n int, err error) {
-    err = w.WriteJSON(WebSocketMessage{
-        Type:    "pty_output",
-        Payload: string(p),
-    })
+    err = w.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: string(p)})
     if err != nil {
         log.Printf("<- WS[ERROR]: Failed to send message for session %s: %v", w.sessionID, err)
         return 0, err
@@ -379,20 +359,40 @@ func (w *wsWriter) Write(p []byte) (n int, err error) {
     return len(p), nil
 }
 
-// --- The following functions are your existing, unchanged helpers ---
-
-func runTerraformInTempDir(tempDir string, safeWS *SafeWebSocketWriter) error {
-    log.Printf("Starting Terraform execution in directory: %s", tempDir)
+// runTerraformInTempDir copies scenario files and runs terraform init/apply.
+func runTerraformInTempDir(scenarioName string, tempDir string, safeWS *SafeWebSocketWriter) error {
+    log.Printf("Starting Terraform execution for scenario '%s' in directory: %s", scenarioName, tempDir)
     safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: fmt.Sprintf("Working directory: %s\r\n", tempDir)})
-    sourceTfFile := "./terraform/setup-weka.tf"
-    destTfFile := filepath.Join(tempDir, "main.tf")
-    input, err := ioutil.ReadFile(sourceTfFile)
+
+    // --- THIS IS THE FIX ---
+    // Construct the correct path WITHOUT the redundant "scenario-tfs" subdirectory.
+    sourceDir := filepath.Join("./scenarios", scenarioName)
+    
+    log.Printf("Checking for scenario directory at: %s", sourceDir)
+    if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
+        return fmt.Errorf("scenario directory not found: %s", sourceDir)
+    }
+
+    log.Printf("Copying all files from %s to %s", sourceDir, tempDir)
+    safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: fmt.Sprintf("Copying files for scenario '%s'...\r\n", scenarioName)})
+
+    files, err := ioutil.ReadDir(sourceDir)
     if err != nil {
-        return fmt.Errorf("failed to read source terraform file: %v", err)
+        return fmt.Errorf("failed to read scenario directory %s: %v", sourceDir, err)
     }
-    if err = ioutil.WriteFile(destTfFile, input, 0644); err != nil {
-        return fmt.Errorf("failed to write terraform file to temp dir: %v", err)
+
+    for _, file := range files {
+        sourceFile := filepath.Join(sourceDir, file.Name())
+        destFile := filepath.Join(tempDir, file.Name())
+        input, err := ioutil.ReadFile(sourceFile)
+        if err != nil {
+            return fmt.Errorf("failed to read source file %s: %v", sourceFile, err)
+        }
+        if err = ioutil.WriteFile(destFile, input, file.Mode()); err != nil {
+            return fmt.Errorf("failed to write destination file %s: %v", destFile, err)
+        }
     }
+
     safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: "Running terraform init...\r\n"})
     initCmd := exec.Command("terraform", "init")
     initCmd.Dir = tempDir
@@ -402,6 +402,7 @@ func runTerraformInTempDir(tempDir string, safeWS *SafeWebSocketWriter) error {
         return fmt.Errorf("terraform init failed: %v", err)
     }
     safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: string(initOutput)})
+
     safeWS.WriteJSON(WebSocketMessage{Type: "pty_output", Payload: "\r\nRunning terraform apply (this may take up to 5 minutes)...\r\n"})
     applyCmd := exec.Command("terraform", "apply", "-auto-approve")
     applyCmd.Dir = tempDir

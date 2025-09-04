@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      ssh: 
+      - default=${HOME}/.ssh/id_ed25519chaosweb
     ports:
       - "5173:5000"
     env_file:
