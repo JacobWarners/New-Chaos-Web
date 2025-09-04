@@ -297,7 +297,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, db *sql.DB) {
             }
             query := `
                 UPDATE sessions
-                SET expires_at = expires_at + interval '1 minute'
+                SET expires_at = expires_at + interval '30 minute'
                 WHERE id = $1
                 RETURNING expires_at;
             `

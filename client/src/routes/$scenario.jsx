@@ -177,7 +177,7 @@ function ScenarioRoute() {
                   </div>
                 )}
                 <button onClick={handleExtendTime} style={{ backgroundColor: '#4b3e34', color: '#ebdbb2', border: '1px solid #665c54', borderRadius: '5px', padding: '8px 16px', fontFamily: 'monospace', fontSize: '14px', cursor: 'pointer' }}>
-                  Extend Session (+1 Minute)
+                  Extend Session (+30 Minute)
                 </button>
               </div>
             </div>
