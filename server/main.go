@@ -146,16 +146,33 @@ func handleConnections(w http.ResponseWriter, r *http.Request, db *sql.DB) {
         log.Printf("Closing SSH connections for session: %s", sessionID)
         if sshSession != nil { sshSession.Close() }
         if sshClient != nil { sshClient.Close() }
+
         if sessionID != "" {
             go func(sID string) {
                 log.Printf("Starting immediate cleanup for disconnected session %s...", sID)
+                
+                // --- THIS IS THE FIX ---
+                // Atomically check and update the session status from 'active' to 'destroying'.
+                // If this affects 0 rows, it means the watcher already claimed it, and we should do nothing.
                 var terraformDir string
-                err := db.QueryRowContext(context.Background(), "SELECT terraform_dir FROM sessions WHERE id = $1", sID).Scan(&terraformDir)
+                query := `
+                    UPDATE sessions 
+                    SET status = 'destroying' 
+                    WHERE id = $1 AND status = 'active'
+                    RETURNING terraform_dir;
+                `
+                err := db.QueryRowContext(context.Background(), query, sID).Scan(&terraformDir)
                 if err != nil {
-                    log.Printf("CRITICAL: Could not get terraform_dir for session %s to clean up: %v", sID, err)
+                    // If err is sql.ErrNoRows, the watcher already got it. This is not an error.
+                    if err == sql.ErrNoRows {
+                        log.Printf("Session %s was already being processed for cleanup. Defer cleanup is skipping.", sID)
+                        return
+                    }
+                    log.Printf("CRITICAL: Could not get/update session %s for cleanup: %v", sID, err)
                     return
                 }
-                db.ExecContext(context.Background(), "UPDATE sessions SET status = 'destroying' WHERE id = $1", sID)
+
+                log.Printf("Cleanup routine claimed session %s. Starting Terraform destroy.", sID)
                 if err := runTerraformDestroy(terraformDir); err != nil {
                     log.Printf("CRITICAL: Immediate Terraform destroy failed for session %s. Error: %v", sID, err)
                     db.ExecContext(context.Background(), "UPDATE sessions SET status = 'destroy_failed' WHERE id = $1", sID)
@@ -278,6 +295,11 @@ func handleConnections(w http.ResponseWriter, r *http.Request, db *sql.DB) {
                 safeWS.WriteJSON(WebSocketMessage{Type: "error", Payload: "Cannot extend session: no active session."})
                 continue
             }
+
+	    ws.SetReadDeadline(time.Now().Add(15 * time.Minute))
+
+
+
             query := `
                 UPDATE sessions
                 SET expires_at = expires_at + interval '30 minutes'

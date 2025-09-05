@@ -10,8 +10,8 @@
 
 .terminal-instance {
   width: 90%; /* Terminal block takes 90% of the wrapper's width */
-  max-width: 1000px; /* But not more than 1000px */
-  height: 500px; /* Fixed height for the terminal */
+  max-width: none; /* But not more than 1000px */
+  height: 90%; /* Fixed height for the terminal */
   
   border: 1px solid #3c3836; /* Gruvbox dark gray border */
   /* Padding here is for the space between the border and the xterm.js canvas */
